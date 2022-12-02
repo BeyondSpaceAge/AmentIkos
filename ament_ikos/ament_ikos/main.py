@@ -32,27 +32,30 @@ def indent(elem, level=0):
     i = '\n' + level * '  '
     if len(elem):
         if not elem.text or not elem.text.strip():
-            elem.text = i + '  '
+            elem.text = f'{i}  '
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
         for elem in elem:
             indent(elem, level + 1)
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
-    else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = i
+    elif level and (not elem.tail or not elem.tail.strip()):
+        elem.tail = i
 
 
 def scan_marker_files(directory: str) -> List[pathlib.Path]:
     """Return a list of marker files in a target directory."""
     def remove_cmake_compiler_test_files(path: pathlib.Path) -> bool:
-        if '/CMakeFiles/' in str(path):
-            return False
-        else:
-            return True
+        return '/CMakeFiles/' not in str(path)
 
-    return list(filter(remove_cmake_compiler_test_files, sorted(pathlib.Path(directory).glob('**/*' + IKOS_MARKER_FILE_EXT))))
+    return list(
+        filter(
+            remove_cmake_compiler_test_files,
+            sorted(
+                pathlib.Path(directory).glob(f'**/*{IKOS_MARKER_FILE_EXT}')
+            ),
+        )
+    )
 
 
 def run_ikos(bitcode_path, ikos_db_path):
@@ -74,21 +77,22 @@ def run_ikos(bitcode_path, ikos_db_path):
 def generate_ikos_stdout(ikos_db_path):
     """Run the IKOS report generator to print the issue list to stdout."""
     rc = subprocess.run(['ikos-report', ikos_db_path])
-    if rc.returncode != 0:
-        pass
 
 
 def generate_ikos_report(ikos_db_path, fmt='junit', format_ext='junit.xml'):
     """Generate an IKOS report in one of the IKOS-supported formats (we use JUnit XML and SARIF)."""
     report_filename = f'{os.path.splitext(ikos_db_path)[0]}.{format_ext}'
-    cmd = ['ikos-report', '--format', fmt, '--report-file', report_filename]
+    cmd = [
+        'ikos-report',
+        '--format',
+        fmt,
+        '--report-file',
+        report_filename,
+        ikos_db_path,
+    ]
 
-    # The target database must be the last argument, after the flags
-    cmd.append(ikos_db_path)
 
     rc = subprocess.run(cmd)
-    if rc.returncode != 0:
-        pass
 
 
 def process_marker_file(marker_file, args):
@@ -110,7 +114,7 @@ def process_marker_file(marker_file, args):
 
             return ikos_db_path
         else:
-            print('Cannot generate report for ' + bc_path + ' due to analysis failure.')
+            print(f'Cannot generate report for {bc_path} due to analysis failure.')
 
 
 def aggregate_junit_xml_files(ikos_db_filenames, summary_filename, summary_name):
@@ -130,7 +134,7 @@ def aggregate_junit_xml_files(ikos_db_filenames, summary_filename, summary_name)
 
         # Handle the file that was output by IKOS for each test
         for db_filename in ikos_db_filenames:
-            junit_xml_filename = os.path.splitext(db_filename)[0] + '.junit.xml'
+            junit_xml_filename = f'{os.path.splitext(db_filename)[0]}.junit.xml'
 
             tree = ET.parse(junit_xml_filename)
             root = tree.getroot()
@@ -167,7 +171,7 @@ def aggregate_sarif_files(ikos_db_filenames, summary_filename, summary_name):
 
     for db_filename in ikos_db_filenames:
         # Generate the input SARIF filename from the IKOS db name
-        sarif_filename = os.path.splitext(db_filename)[0] + '.sarif'
+        sarif_filename = f'{os.path.splitext(db_filename)[0]}.sarif'
 
         # Process the file
         with open(sarif_filename) as input_file:
@@ -214,13 +218,12 @@ def main(argv=sys.argv[1:]) -> int:
     # Scan for the marker files left by IKOS (*.ikosbin) in the target directory
     marker_files = scan_marker_files(args.directory)
     if not marker_files:
-        print('No marker files found when scanning ' + args.directory)
+        print(f'No marker files found when scanning {args.directory}')
         return 0
 
     # Process each one
     for m in marker_files:
-        result = process_marker_file(m, args)
-        if result:
+        if result := process_marker_file(m, args):
             ikos_db_files.append(result)
 
     # Generate the output files
